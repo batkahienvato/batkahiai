@@ -104,7 +104,16 @@ TEXT = {
  }
 }
 
-DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
+# Streamlit Community Cloud secrets are supported; environment variables remain supported for other hosts.
+try:
+    _streamlit_db_url = st.secrets.get("DATABASE_URL", "")
+    _streamlit_admin_username = st.secrets.get("BATKAHI_ADMIN_USERNAME", "admin")
+    _streamlit_admin_password = st.secrets.get("BATKAHI_ADMIN_PASSWORD", "")
+except Exception:
+    _streamlit_db_url = ""
+    _streamlit_admin_username = "admin"
+    _streamlit_admin_password = ""
+DATABASE_URL = (os.getenv("DATABASE_URL", "") or _streamlit_db_url).strip()
 
 class DBResult:
     def __init__(self, cursor):
@@ -194,8 +203,8 @@ def init_db():
               detail TEXT, created_at TEXT NOT NULL
             );
             """)
-        initial_password = os.getenv("BATKAHI_ADMIN_PASSWORD", "admin123")
-        initial_username = os.getenv("BATKAHI_ADMIN_USERNAME", "admin")
+        initial_password = os.getenv("BATKAHI_ADMIN_PASSWORD", "") or _streamlit_admin_password or "CHANGE-ME-IMMEDIATELY"
+        initial_username = os.getenv("BATKAHI_ADMIN_USERNAME", "") or _streamlit_admin_username or "admin"
         defaults = {
           "admin_username": initial_username,
           "admin_password_hash": hashlib.sha256(initial_password.encode()).hexdigest(),
@@ -264,14 +273,12 @@ if not logged_in():
         pwd=st.text_input(t("password"), type="password")
         if st.button(t("sign_in"), use_container_width=True):
             hashed=hashlib.sha256(pwd.encode()).hexdigest()
-            valid_id=hmac.compare_digest(login_id.strip(), setting("admin_username", "admin"))
-            valid_password=hmac.compare_digest(hashed, setting("admin_password_hash"))
-            if valid_id and valid_password:
+            if hmac.compare_digest(login_id.strip(), setting("admin_username", "admin")) and hmac.compare_digest(hashed, setting("admin_password_hash")):
                 st.session_state.authenticated=True
                 st.rerun()
             else:
                 st.error(t("wrong"))
-        st.caption("एक साझा टीम Login ID और Password इस्तेमाल करें।")
+        st.caption("Login ID और Password वही डालें जो Streamlit Secrets में सेट किए हैं।")
     st.stop()
 
 # Sidebar
@@ -450,26 +457,21 @@ elif page == t("settings"):
         set_setting("youtube_api_key",current.strip())
         st.success(t("saved"))
     st.divider()
-    st.subheader("Shared team login / साझा टीम लॉगिन")
-    current_id=st.text_input("Current Login ID", value=setting("admin_username", "admin"))
-    current_password=st.text_input("Current password",type="password")
-    new_id=st.text_input("New shared Login ID", value=setting("admin_username", "admin"))
-    new_password=st.text_input("New shared password (minimum 10 characters)",type="password")
+    st.subheader("Change shared login / साझा लॉगिन बदलें")
+    old=st.text_input("Current password",type="password")
+    new_id=st.text_input("New Login ID", value=setting("admin_username", "admin"))
+    new=st.text_input("New password (minimum 10 characters)",type="password")
     if st.button("Update shared login"):
-        current_hash=hashlib.sha256(current_password.encode()).hexdigest()
-        if not hmac.compare_digest(current_id.strip(), setting("admin_username", "admin")):
-            st.error("Current Login ID is incorrect.")
-        elif not hmac.compare_digest(current_hash, setting("admin_password_hash")):
+        if hashlib.sha256(old.encode()).hexdigest()!=setting("admin_password_hash"):
             st.error("Current password is incorrect.")
         elif not new_id.strip():
             st.error("Login ID cannot be empty.")
-        elif new_password and len(new_password)<10:
+        elif len(new)<10:
             st.error("Use at least 10 characters.")
         else:
-            set_setting("admin_username", new_id.strip())
-            if new_password:
-                set_setting("admin_password_hash", hashlib.sha256(new_password.encode()).hexdigest())
-            st.success("Shared team login updated. Share the new credentials securely with your team.")
+            set_setting("admin_username",new_id.strip())
+            set_setting("admin_password_hash",hashlib.sha256(new.encode()).hexdigest())
+            st.success("Shared Login ID and password updated. All users will use the new login.")
     st.divider()
     st.subheader("YouTube API connection test")
     if st.button(t("test")):
