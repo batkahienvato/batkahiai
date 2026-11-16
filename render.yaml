@@ -1,0 +1,26 @@
+databases:
+  - name: batkahi-ai-db
+    databaseName: batkahi_ai
+    user: batkahi_ai_user
+    plan: basic-256mb
+    region: singapore
+
+services:
+  - type: web
+    name: batkahi-ai
+    runtime: python
+    plan: starter
+    region: singapore
+    buildCommand: pip install -r requirements.txt
+    startCommand: streamlit run batkahi_ai.py --server.address 0.0.0.0 --server.port $PORT --server.headless true
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: batkahi-ai-db
+          property: connectionString
+      - key: BATKAHI_ADMIN_USERNAME
+        sync: false
+      - key: BATKAHI_ADMIN_PASSWORD
+        sync: false
+      - key: PYTHON_VERSION
+        value: 3.12.8
